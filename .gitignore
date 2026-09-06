@@ -1,0 +1,15 @@
+# Ambientes Virtuais
+venv/
+env/
+
+# Arquivos do Python
+__pycache__/
+*.pyc
+
+# Modelos do YOLO
+*.pt
+
+# Imagens recebidas e de teste (opcional ignorar o conteúdo, mas manter a pasta)
+received_images/*
+!received_images/.gitkeep
+server/test_images/
