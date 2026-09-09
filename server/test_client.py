@@ -54,13 +54,16 @@ def test_server():
             msglen = struct.pack('>I', len(image_bytes))
             client_socket.sendall(msglen)
             client_socket.sendall(image_bytes)
-
-            # Recebe Resposta
-            response_bytes = client_socket.recv(4096)
-            response_json = json.loads(response_bytes.decode('utf-8'))
-            
-            print(f"Resultado: {json.dumps(response_json, ensure_ascii=False)}")
-
+            # Recebe os 4 bytes com o tamanho do JSON
+            raw_resplen = client_socket.recv(4)
+            if raw_resplen:
+                resplen = struct.unpack('>I', raw_resplen)[0]
+                
+                # Recebe o JSON completo usando o tamanho exato
+                response_bytes = client_socket.recv(resplen)
+                response_json = json.loads(response_bytes.decode('utf-8'))
+                
+                print(f"Resultado: {json.dumps(response_json, ensure_ascii=False)}")
         except ConnectionRefusedError:
             print("Servidor não está rodando.")
             break
