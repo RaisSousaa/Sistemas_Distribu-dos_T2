@@ -12,4 +12,6 @@ __pycache__/
 # Imagens recebidas e de teste (opcional ignorar o conteúdo, mas manter a pasta)
 received_images/*
 !received_images/.gitkeep
+server/received_images/*
+!server/received_images/.gitkeep
 server/test_images/

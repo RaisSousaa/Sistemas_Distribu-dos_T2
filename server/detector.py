@@ -3,7 +3,10 @@ import datetime
 import os
 from ultralytics import YOLO
 
-MODEL_PATH = "yolov8n.pt" 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
+
+MODEL_PATH = os.path.join(BASE_DIR, "yolov8n.pt")
 model = YOLO(MODEL_PATH)
 
 def process_image(image_bytes):
@@ -13,7 +16,7 @@ def process_image(image_bytes):
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
     if img is None:
-        raise ValueError("Falha ao decodificar a imagem.")
+        raise ValueError("Falha ao decodificar a imagem: formato inválido ou corrompido.")
 
     results = model(img, conf=0.5) 
     detected_objects = []
@@ -31,11 +34,17 @@ def process_image(image_bytes):
                 "confidence": round(confidence, 2)
             })
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_dir = "../received_images" 
-    os.makedirs(save_dir, exist_ok=True)
+    # Timestamp no formato especificado no PDF (ex: 2026-09-08_18-10-21.jpg)
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
-    filename = os.path.join(save_dir, f"captured_{timestamp}.jpg")
-    cv2.imwrite(filename, img)
+    # Salva no diretório received_images (tanto raiz quanto em server/ se existir)
+    save_dirs = [
+        os.path.join(ROOT_DIR, "received_images"),
+        os.path.join(BASE_DIR, "received_images"),
+    ]
+    for s_dir in save_dirs:
+        os.makedirs(s_dir, exist_ok=True)
+        filename = os.path.join(s_dir, f"{timestamp}.jpg")
+        cv2.imwrite(filename, img)
     
     return detected_objects

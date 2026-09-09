@@ -233,6 +233,39 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${text[0].toUpperCase()}${text.substring(1)}';
   }
 
+  String _formatDetectionTitle(String name) {
+    const directPhrases = {
+      'person': 'Pessoa detectada',
+      'chair': 'Cadeira detectada',
+      'backpack': 'Mochila detectada',
+      'bicycle': 'Bicicleta detectada',
+      'motorcycle': 'Motocicleta detectada',
+      'bottle': 'Garrafa detectada',
+      'table': 'Mesa detectada',
+      'dining table': 'Mesa detectada',
+      'car': 'Carro detectado',
+      'bus': 'Ônibus detectado',
+      'truck': 'Caminhão detectado',
+      'dog': 'Cachorro detectado',
+      'cat': 'Gato detectado',
+      'cell phone': 'Celular detectado',
+      'laptop': 'Notebook detectado',
+      'book': 'Livro detectado',
+      'cup': 'Copo detectado',
+    };
+
+    final lower = name.toLowerCase();
+    if (directPhrases.containsKey(lower)) {
+      return directPhrases[lower]!;
+    }
+
+    final translated = _translateObjectName(name);
+    if (translated.endsWith('a')) {
+      return '$translated detectada';
+    }
+    return '$translated detectado';
+  }
+
   Widget _buildResultContent() {
     if (_isLoading) {
       return const Center(
@@ -267,8 +300,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         ..._detections.map(
           (detection) {
-            final String translatedName =
-                _translateObjectName(
+            final String detectionTitle =
+                _formatDetectionTitle(
               detection.name,
             );
 
@@ -294,13 +327,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '$translatedName detectado',
+                          detectionTitle,
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight:
                                 FontWeight.w600,
                           ),
                         ),
+
 
                         const SizedBox(height: 4),
 
