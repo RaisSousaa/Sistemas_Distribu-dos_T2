@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../services/camera_service.dart';
+import '../services/image_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +18,7 @@ class _HomeScreenState extends State<HomeScreen> {
       TextEditingController(text: '5000');
 
   final CameraService _cameraService = CameraService();
+  final ImageService _imageService = ImageService();
 
   bool _isLoading = false;
   bool _cameraReady = false;
@@ -26,7 +28,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-
     _initializeCamera();
   }
 
@@ -78,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      // 1. Captura a fotografia.
       final XFile photo = await _cameraService.takePicture();
 
       if (!mounted) {
@@ -85,7 +87,27 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _result = 'Foto capturada com sucesso.\n\n${photo.path}';
+        _result = 'Preparando imagem...';
+      });
+
+      // 2. Redimensiona e comprime.
+      final PreparedImage preparedImage =
+          await _imageService.prepareImage(photo.path);
+
+      if (!mounted) {
+        return;
+      }
+
+      final double sizeInKb =
+          preparedImage.bytes.length / 1024;
+
+      setState(() {
+        _result =
+            'Imagem preparada com sucesso.\n\n'
+            'Resolução: '
+            '${preparedImage.width} x ${preparedImage.height}\n'
+            'Qualidade JPEG: 80%\n'
+            'Tamanho: ${sizeInKb.toStringAsFixed(2)} KB';
       });
     } catch (error) {
       if (!mounted) {
@@ -93,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _result = 'Erro ao capturar fotografia: $error';
+        _result = 'Erro ao preparar imagem: $error';
       });
     } finally {
       if (mounted) {
