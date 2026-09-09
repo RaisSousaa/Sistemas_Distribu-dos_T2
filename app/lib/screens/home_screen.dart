@@ -1,8 +1,11 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../models/detection.dart';
+import '../models/detection_response.dart';
 import '../services/camera_service.dart';
 import '../services/image_service.dart';
+import '../services/socket_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,18 +15,22 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _ipController = TextEditingController();
+  final TextEditingController _ipController =
+      TextEditingController();
 
   final TextEditingController _portController =
       TextEditingController(text: '5000');
 
   final CameraService _cameraService = CameraService();
   final ImageService _imageService = ImageService();
+  final SocketService _socketService = SocketService();
 
   bool _isLoading = false;
   bool _cameraReady = false;
 
-  String _result = 'Nenhuma análise realizada.';
+  String _statusMessage = 'Nenhuma análise realizada.';
+
+  List<Detection> _detections = [];
 
   @override
   void initState() {
@@ -48,18 +55,32 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _result = 'Erro ao inicializar a câmera: $error';
+        _statusMessage =
+            'Erro ao inicializar a câmera: $error';
       });
     }
   }
 
   Future<void> _analyzeImage() async {
     final String ip = _ipController.text.trim();
-    final String port = _portController.text.trim();
+    final String portText = _portController.text.trim();
 
-    if (ip.isEmpty || port.isEmpty) {
+    if (ip.isEmpty || portText.isEmpty) {
       setState(() {
-        _result = 'Informe o IP e a porta do servidor.';
+        _statusMessage =
+            'Informe o IP e a porta do servidor.';
+        _detections = [];
+      });
+
+      return;
+    }
+
+    final int? port = int.tryParse(portText);
+
+    if (port == null || port < 1 || port > 65535) {
+      setState(() {
+        _statusMessage = 'Informe uma porta válida.';
+        _detections = [];
       });
 
       return;
@@ -67,7 +88,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!_cameraReady) {
       setState(() {
-        _result = 'A câmera ainda não está pronta.';
+        _statusMessage =
+            'A câmera ainda não está pronta.';
+        _detections = [];
       });
 
       return;
@@ -75,39 +98,90 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _isLoading = true;
-      _result = 'Capturando fotografia...';
+      _statusMessage = 'Capturando fotografia...';
+      _detections = [];
     });
 
     try {
-      // 1. Captura a fotografia.
-      final XFile photo = await _cameraService.takePicture();
+      // 1. Captura a foto.
+      final XFile photo =
+          await _cameraService.takePicture();
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _result = 'Preparando imagem...';
+        _statusMessage = 'Preparando imagem...';
       });
 
       // 2. Redimensiona e comprime.
       final PreparedImage preparedImage =
-          await _imageService.prepareImage(photo.path);
+          await _imageService.prepareImage(
+        photo.path,
+      );
 
       if (!mounted) {
         return;
       }
 
-      final double sizeInKb =
-          preparedImage.bytes.length / 1024;
+      setState(() {
+        _statusMessage =
+            'Enviando imagem para o servidor...';
+      });
+
+      // 3. Envia pelo socket.
+      final String jsonResponse =
+          await _socketService.sendImage(
+        ip: ip,
+        port: port,
+        imageBytes: preparedImage.bytes,
+      );
+
+      // 4. Converte o JSON recebido.
+      final DetectionResponse response =
+          DetectionResponse.fromJsonString(
+        jsonResponse,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!response.success) {
+        setState(() {
+          _statusMessage =
+              response.error ??
+              'O servidor informou um erro.';
+          _detections = [];
+        });
+
+        return;
+      }
+
+      if (response.objects.isEmpty) {
+        setState(() {
+          _statusMessage = 'Nada Detectado';
+          _detections = [];
+        });
+
+        return;
+      }
 
       setState(() {
-        _result =
-            'Imagem preparada com sucesso.\n\n'
-            'Resolução: '
-            '${preparedImage.width} x ${preparedImage.height}\n'
-            'Qualidade JPEG: 80%\n'
-            'Tamanho: ${sizeInKb.toStringAsFixed(2)} KB';
+        _statusMessage = 'Objetos detectados:';
+        _detections = response.objects;
+      });
+    } on FormatException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage =
+            'Resposta inválida do servidor: '
+            '${error.message}';
+        _detections = [];
       });
     } catch (error) {
       if (!mounted) {
@@ -115,7 +189,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _result = 'Erro ao preparar imagem: $error';
+        _statusMessage = 'Erro: $error';
+        _detections = [];
       });
     } finally {
       if (mounted) {
@@ -124,6 +199,125 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  String _translateObjectName(String name) {
+    const translations = {
+      'person': 'Pessoa',
+      'chair': 'Cadeira',
+      'backpack': 'Mochila',
+      'car': 'Carro',
+      'motorcycle': 'Motocicleta',
+      'bicycle': 'Bicicleta',
+      'bus': 'Ônibus',
+      'truck': 'Caminhão',
+      'dog': 'Cachorro',
+      'cat': 'Gato',
+      'bottle': 'Garrafa',
+      'cell phone': 'Celular',
+      'laptop': 'Notebook',
+      'book': 'Livro',
+      'cup': 'Copo',
+      'table': 'Mesa',
+    };
+
+    return translations[name.toLowerCase()] ??
+        _capitalize(name);
+  }
+
+  String _capitalize(String text) {
+    if (text.isEmpty) {
+      return text;
+    }
+
+    return '${text[0].toUpperCase()}${text.substring(1)}';
+  }
+
+  Widget _buildResultContent() {
+    if (_isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_detections.isEmpty) {
+      return Text(
+        _statusMessage,
+        style: const TextStyle(
+          fontSize: 16,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _statusMessage,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        ..._detections.map(
+          (detection) {
+            final String translatedName =
+                _translateObjectName(
+              detection.name,
+            );
+
+            final double percentage =
+                detection.confidence * 100;
+
+            return Padding(
+              padding:
+                  const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.check_circle_outline,
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$translatedName detectado',
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight:
+                                FontWeight.w600,
+                          ),
+                        ),
+
+                        const SizedBox(height: 4),
+
+                        Text(
+                          'Confiança: '
+                          '${percentage.toStringAsFixed(0)}%',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   @override
@@ -142,30 +336,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Detector de Objetos'),
+        title: const Text(
+          'Detector de Objetos',
+        ),
         centerTitle: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment:
+                CrossAxisAlignment.stretch,
             children: [
               if (_cameraReady &&
                   cameraController != null &&
-                  cameraController.value.isInitialized)
+                  cameraController
+                      .value.isInitialized)
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius:
+                      BorderRadius.circular(12),
                   child: AspectRatio(
-                    aspectRatio: cameraController.value.aspectRatio,
-                    child: CameraPreview(cameraController),
+                    aspectRatio:
+                        cameraController
+                            .value.aspectRatio,
+                    child: CameraPreview(
+                      cameraController,
+                    ),
                   ),
                 )
               else
                 const SizedBox(
                   height: 200,
                   child: Center(
-                    child: CircularProgressIndicator(),
+                    child:
+                        CircularProgressIndicator(),
                   ),
                 ),
 
@@ -183,11 +387,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
               TextField(
                 controller: _ipController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'IP do servidor',
-                  hintText: '192.168.0.122',
-                  border: OutlineInputBorder(),
+                keyboardType:
+                    TextInputType.number,
+                decoration:
+                    const InputDecoration(
+                  labelText:
+                      'IP do servidor',
+                  hintText:
+                      '192.168.1.100',
+                  border:
+                      OutlineInputBorder(),
                 ),
               ),
 
@@ -195,20 +404,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
               TextField(
                 controller: _portController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
+                keyboardType:
+                    TextInputType.number,
+                decoration:
+                    const InputDecoration(
                   labelText: 'Porta',
                   hintText: '5000',
-                  border: OutlineInputBorder(),
+                  border:
+                      OutlineInputBorder(),
                 ),
               ),
 
               const SizedBox(height: 24),
 
               ElevatedButton.icon(
-                onPressed: _isLoading ? null : _analyzeImage,
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('Tirar e Analisar'),
+                onPressed: _isLoading
+                    ? null
+                    : _analyzeImage,
+                icon: const Icon(
+                  Icons.camera_alt,
+                ),
+                label: const Text(
+                  'Tirar e Analisar',
+                ),
               ),
 
               const SizedBox(height: 32),
@@ -224,21 +442,14 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
 
               Container(
-                padding: const EdgeInsets.all(16),
+                padding:
+                    const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   border: Border.all(),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius:
+                      BorderRadius.circular(12),
                 ),
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(),
-                      )
-                    : Text(
-                        _result,
-                        style: const TextStyle(
-                          fontSize: 16,
-                        ),
-                      ),
+                child: _buildResultContent(),
               ),
             ],
           ),
