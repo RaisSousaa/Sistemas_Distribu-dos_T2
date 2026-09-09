@@ -4,14 +4,12 @@ import json
 import logging
 from detector import process_image
 
-# Configuração de Logs do servidor
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-HOST = '0.0.0.0'  # Escuta em todas as interfaces de rede
-PORT = 5000       # Porta que o Flutter vai conectar (Configuração IP/porta)
+HOST = '0.0.0.0'
+PORT = 5000
 
 def start_server():
-    # Cria o Servidor TCP
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((HOST, PORT))
     server_socket.listen(1)
@@ -23,52 +21,50 @@ def start_server():
             conn, addr = server_socket.accept()
             logging.info(f"Conectado a {addr}")
 
-            # 1. Recebimento dos 4 bytes (Tamanho da imagem)
             raw_msglen = recvall(conn, 4)
             if not raw_msglen:
-                logging.warning("Não foi possível receber o tamanho da imagem.")
                 conn.close()
                 continue
                 
-            # Desempacota os 4 bytes para um número inteiro (big-endian)
             msglen = struct.unpack('>I', raw_msglen)[0]
-            logging.info(f"Tamanho da imagem esperado: {msglen} bytes")
-
-            # 2. Recebimento completo da imagem
             image_bytes = recvall(conn, msglen)
+            
             if not image_bytes:
-                logging.warning("Falha ao receber os bytes da imagem.")
                 conn.close()
                 continue
 
-            # 3. Processamento (OpenCV e YOLO)
-            logging.info("Processando a imagem...")
+            # Construção do JSON no novo formato
             try:
                 detected_objects = process_image(image_bytes)
-                
-                # 4. Construção do JSON
-                if len(detected_objects) > 0:
-                    response = {"status": "success", "objects": detected_objects}
-                else:
-                    response = {"status": "success", "objects": [], "message": "Nada Detectado"}
-                    
+                response = {
+                    "success": True,
+                    "objects": detected_objects,
+                    "error": None
+                }
             except Exception as e:
                 logging.error(f"Erro no processamento: {e}")
-                response = {"status": "error", "message": str(e)}
+                response = {
+                    "success": False,
+                    "objects": [],
+                    "error": str(e)
+                }
 
-            # 5. Retorno pelo socket
             response_data = json.dumps(response).encode('utf-8')
+            response_len = len(response_data)
+            
+            # Envio do tamanho do JSON (4 bytes, big-endian)
+            conn.sendall(struct.pack('>I', response_len))
+            # Envio do JSON em UTF-8
             conn.sendall(response_data)
-            logging.info(f"Resposta enviada: {response}")
-
-            conn.close()
-            logging.info("Conexão encerrada. Aguardando próxima imagem...\n")
+            
+            # O servidor encerra a conexão após cada análise
+            conn.close() 
+            logging.info("Resposta enviada. Conexão encerrada.\n")
 
         except Exception as e:
             logging.error(f"Erro no servidor: {e}")
 
 def recvall(sock, n):
-    """Função auxiliar para receber 'n' bytes exatamente ou retornar None"""
     data = bytearray()
     while len(data) < n:
         packet = sock.recv(n - len(data))
