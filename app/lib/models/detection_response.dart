@@ -13,44 +13,32 @@ class DetectionResponse {
     required this.error,
   });
 
-  factory DetectionResponse.fromJsonString(
-    String jsonString,
-  ) {
+  factory DetectionResponse.fromJsonString(String jsonString) {
     final dynamic decoded = jsonDecode(jsonString);
 
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException(
-        'Resposta JSON inválida.',
-      );
+      throw const FormatException('Resposta JSON inválida.');
     }
 
     return DetectionResponse.fromJson(decoded);
   }
 
-  factory DetectionResponse.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory DetectionResponse.fromJson(Map<String, dynamic> json) {
     final success = json['success'];
     final objects = json['objects'];
     final error = json['error'];
 
     if (success is! bool) {
-      throw const FormatException(
-        'Campo "success" inválido.',
-      );
+      throw const FormatException('Campo "success" inválido.');
     }
 
     if (objects is! List) {
-      throw const FormatException(
-        'Campo "objects" inválido.',
-      );
+      throw const FormatException('Campo "objects" inválido.');
     }
 
     final detections = objects.map((item) {
       if (item is! Map<String, dynamic>) {
-        throw const FormatException(
-          'Objeto de detecção inválido.',
-        );
+        throw const FormatException('Objeto de detecção inválido.');
       }
 
       return Detection.fromJson(item);

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -15,11 +17,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _ipController =
-      TextEditingController();
+  final TextEditingController _ipController = TextEditingController();
 
-  final TextEditingController _portController =
-      TextEditingController(text: '5000');
+  final TextEditingController _portController = TextEditingController(
+    text: '5000',
+  );
 
   final CameraService _cameraService = CameraService();
   final ImageService _imageService = ImageService();
@@ -31,6 +33,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _statusMessage = 'Nenhuma análise realizada.';
 
   List<Detection> _detections = [];
+
+  String? _capturedImagePath;
 
   @override
   void initState() {
@@ -55,20 +59,50 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _statusMessage =
-            'Erro ao inicializar a câmera: $error';
+        _statusMessage = 'Erro ao inicializar a câmera: $error';
       });
     }
   }
 
+  bool _isValidIpv4(String ip) {
+    final parts = ip.split('.');
+
+    if (parts.length != 4) {
+      return false;
+    }
+
+    for (final part in parts) {
+      if (part.isEmpty) {
+        return false;
+      }
+
+      final int? value = int.tryParse(part);
+
+      if (value == null || value < 0 || value > 255) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   Future<void> _analyzeImage() async {
     final String ip = _ipController.text.trim();
+
     final String portText = _portController.text.trim();
 
     if (ip.isEmpty || portText.isEmpty) {
       setState(() {
-        _statusMessage =
-            'Informe o IP e a porta do servidor.';
+        _statusMessage = 'Informe o IP e a porta do servidor.';
+        _detections = [];
+      });
+
+      return;
+    }
+
+    if (!_isValidIpv4(ip)) {
+      setState(() {
+        _statusMessage = 'Informe um endereço IP válido.';
         _detections = [];
       });
 
@@ -88,8 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!_cameraReady) {
       setState(() {
-        _statusMessage =
-            'A câmera ainda não está pronta.';
+        _statusMessage = 'A câmera ainda não está pronta.';
         _detections = [];
       });
 
@@ -103,21 +136,22 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // 1. Captura a foto.
-      final XFile photo =
-          await _cameraService.takePicture();
+      // 1. Captura a fotografia.
+      final XFile photo = await _cameraService.takePicture();
 
       if (!mounted) {
         return;
       }
 
+      // A partir daqui, a interface passa
+      // a exibir a fotografia capturada.
       setState(() {
+        _capturedImagePath = photo.path;
         _statusMessage = 'Preparando imagem...';
       });
 
       // 2. Redimensiona e comprime.
-      final PreparedImage preparedImage =
-          await _imageService.prepareImage(
+      final PreparedImage preparedImage = await _imageService.prepareImage(
         photo.path,
       );
 
@@ -126,21 +160,26 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _statusMessage =
-            'Enviando imagem para o servidor...';
+        _statusMessage = 'Enviando imagem para o servidor...';
       });
 
-      // 3. Envia pelo socket.
-      final String jsonResponse =
-          await _socketService.sendImage(
+      // 3. Envia pelo socket TCP.
+      final String jsonResponse = await _socketService.sendImage(
         ip: ip,
         port: port,
         imageBytes: preparedImage.bytes,
       );
 
-      // 4. Converte o JSON recebido.
-      final DetectionResponse response =
-          DetectionResponse.fromJsonString(
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = 'Analisando resultado...';
+      });
+
+      // 4. Interpreta a resposta JSON.
+      final DetectionResponse response = DetectionResponse.fromJsonString(
         jsonResponse,
       );
 
@@ -150,9 +189,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!response.success) {
         setState(() {
-          _statusMessage =
-              response.error ??
-              'O servidor informou um erro.';
+          _statusMessage = response.error ?? 'O servidor informou um erro.';
+
           _detections = [];
         });
 
@@ -170,7 +208,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _statusMessage = 'Objetos detectados:';
+
         _detections = response.objects;
+      });
+    } on SocketServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = error.message;
+        _detections = [];
       });
     } on FormatException catch (error) {
       if (!mounted) {
@@ -181,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _statusMessage =
             'Resposta inválida do servidor: '
             '${error.message}';
+
         _detections = [];
       });
     } catch (error) {
@@ -189,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _statusMessage = 'Erro: $error';
+        _statusMessage = 'Ocorreu um erro inesperado.';
         _detections = [];
       });
     } finally {
@@ -199,6 +248,14 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  void _newAnalysis() {
+    setState(() {
+      _capturedImagePath = null;
+      _detections = [];
+      _statusMessage = 'Pronto para uma nova análise.';
+    });
   }
 
   String _translateObjectName(String name) {
@@ -218,11 +275,10 @@ class _HomeScreenState extends State<HomeScreen> {
       'laptop': 'Notebook',
       'book': 'Livro',
       'cup': 'Copo',
-      'table': 'Mesa',
+      'dining table': 'Mesa',
     };
 
-    return translations[name.toLowerCase()] ??
-        _capitalize(name);
+    return translations[name.toLowerCase()] ?? _capitalize(name);
   }
 
   String _capitalize(String text) {
@@ -230,59 +286,63 @@ class _HomeScreenState extends State<HomeScreen> {
       return text;
     }
 
-    return '${text[0].toUpperCase()}${text.substring(1)}';
+    return '${text[0].toUpperCase()}'
+        '${text.substring(1)}';
   }
 
-  String _formatDetectionTitle(String name) {
-    const directPhrases = {
-      'person': 'Pessoa detectada',
-      'chair': 'Cadeira detectada',
-      'backpack': 'Mochila detectada',
-      'bicycle': 'Bicicleta detectada',
-      'motorcycle': 'Motocicleta detectada',
-      'bottle': 'Garrafa detectada',
-      'table': 'Mesa detectada',
-      'dining table': 'Mesa detectada',
-      'car': 'Carro detectado',
-      'bus': 'Ônibus detectado',
-      'truck': 'Caminhão detectado',
-      'dog': 'Cachorro detectado',
-      'cat': 'Gato detectado',
-      'cell phone': 'Celular detectado',
-      'laptop': 'Notebook detectado',
-      'book': 'Livro detectado',
-      'cup': 'Copo detectado',
-    };
+  Widget _buildImageArea() {
+    final CameraController? cameraController = _cameraService.controller;
 
-    final lower = name.toLowerCase();
-    if (directPhrases.containsKey(lower)) {
-      return directPhrases[lower]!;
+    // Se já existe uma fotografia capturada,
+    // mostra exatamente a imagem enviada.
+    if (_capturedImagePath != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: AspectRatio(
+          aspectRatio: 3 / 4,
+          child: Image.file(File(_capturedImagePath!), fit: BoxFit.cover),
+        ),
+      );
     }
 
-    final translated = _translateObjectName(name);
-    if (translated.endsWith('a')) {
-      return '$translated detectada';
+    // Caso contrário, mostra câmera ao vivo.
+    if (_cameraReady &&
+        cameraController != null &&
+        cameraController.value.isInitialized) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: AspectRatio(
+          aspectRatio: cameraController.value.aspectRatio,
+          child: CameraPreview(cameraController),
+        ),
+      );
     }
-    return '$translated detectado';
+
+    return const SizedBox(
+      height: 300,
+      child: Center(child: CircularProgressIndicator()),
+    );
   }
 
   Widget _buildResultContent() {
     if (_isLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: CircularProgressIndicator(),
-        ),
+      return Column(
+        children: [
+          const CircularProgressIndicator(),
+
+          const SizedBox(height: 16),
+
+          Text(
+            _statusMessage,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16),
+          ),
+        ],
       );
     }
 
     if (_detections.isEmpty) {
-      return Text(
-        _statusMessage,
-        style: const TextStyle(
-          fontSize: 16,
-        ),
-      );
+      return Text(_statusMessage, style: const TextStyle(fontSize: 16));
     }
 
     return Column(
@@ -290,66 +350,50 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Text(
           _statusMessage,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
 
         const SizedBox(height: 16),
 
-        ..._detections.map(
-          (detection) {
-            final String detectionTitle =
-                _formatDetectionTitle(
-              detection.name,
-            );
+        ..._detections.map((detection) {
+          final String translatedName = _translateObjectName(detection.name);
 
-            final double percentage =
-                detection.confidence * 100;
+          final double percentage = detection.confidence * 100;
 
-            return Padding(
-              padding:
-                  const EdgeInsets.only(bottom: 12),
-              child: Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.check_circle_outline,
-                  ),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.check_circle),
 
-                  const SizedBox(width: 12),
+                const SizedBox(width: 12),
 
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          detectionTitle,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight:
-                                FontWeight.w600,
-                          ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$translatedName detectado',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
 
+                      const SizedBox(height: 4),
 
-                        const SizedBox(height: 4),
-
-                        Text(
-                          'Confiança: '
-                          '${percentage.toStringAsFixed(0)}%',
-                        ),
-                      ],
-                    ),
+                      Text(
+                        'Confiança: '
+                        '${percentage.toStringAsFixed(0)}%',
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          },
-        ),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
@@ -365,72 +409,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final CameraController? cameraController =
-        _cameraService.controller;
+    final bool hasCapturedImage = _capturedImagePath != null;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Detector de Objetos',
-        ),
+        title: const Text('Detector de Objetos'),
         centerTitle: true,
       ),
+
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_cameraReady &&
-                  cameraController != null &&
-                  cameraController
-                      .value.isInitialized)
-                ClipRRect(
-                  borderRadius:
-                      BorderRadius.circular(12),
-                  child: AspectRatio(
-                    aspectRatio:
-                        cameraController
-                            .value.aspectRatio,
-                    child: CameraPreview(
-                      cameraController,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(
-                  height: 200,
-                  child: Center(
-                    child:
-                        CircularProgressIndicator(),
-                  ),
-                ),
+              _buildImageArea(),
 
               const SizedBox(height: 24),
 
               const Text(
-                'Servidor',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                'Conexão com o servidor',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
 
               const SizedBox(height: 16),
 
               TextField(
                 controller: _ipController,
-                keyboardType:
-                    TextInputType.number,
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'IP do servidor',
-                  hintText:
-                      '192.168.1.100',
-                  border:
-                      OutlineInputBorder(),
+                enabled: !_isLoading && !hasCapturedImage,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'IP do servidor',
+                  hintText: '192.168.1.100',
+                  prefixIcon: Icon(Icons.lan),
+                  border: OutlineInputBorder(),
                 ),
               ),
 
@@ -438,53 +450,59 @@ class _HomeScreenState extends State<HomeScreen> {
 
               TextField(
                 controller: _portController,
-                keyboardType:
-                    TextInputType.number,
-                decoration:
-                    const InputDecoration(
+                enabled: !_isLoading && !hasCapturedImage,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
                   labelText: 'Porta',
                   hintText: '5000',
-                  border:
-                      OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.settings_ethernet),
+                  border: OutlineInputBorder(),
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              ElevatedButton.icon(
-                onPressed: _isLoading
-                    ? null
-                    : _analyzeImage,
-                icon: const Icon(
-                  Icons.camera_alt,
+              if (!hasCapturedImage)
+                FilledButton.icon(
+                  onPressed: _isLoading ? null : _analyzeImage,
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 14),
+                    child: Text('Tirar e Analisar'),
+                  ),
                 ),
-                label: const Text(
-                  'Tirar e Analisar',
-                ),
-              ),
 
-              const SizedBox(height: 32),
+              if (hasCapturedImage && !_isLoading)
+                OutlinedButton.icon(
+                  onPressed: _newAnalysis,
+                  icon: const Icon(Icons.refresh),
+                  label: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 14),
+                    child: Text('Nova análise'),
+                  ),
+                ),
+
+              const SizedBox(height: 28),
 
               const Text(
                 'Resultado',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
               Container(
-                padding:
-                    const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  border: Border.all(),
-                  borderRadius:
-                      BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: _buildResultContent(),
               ),
+
+              const SizedBox(height: 24),
             ],
           ),
         ),

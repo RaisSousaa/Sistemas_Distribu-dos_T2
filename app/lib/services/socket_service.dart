@@ -3,11 +3,24 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-class SocketService {
-  static const Duration connectionTimeout = Duration(seconds: 5);
-  static const Duration responseTimeout = Duration(seconds: 15);
+class SocketServiceException implements Exception {
+  final String message;
 
-  static const int maxResponseSize = 1024 * 1024; // 1 MB
+  const SocketServiceException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+class SocketService {
+  static const Duration connectionTimeout =
+      Duration(seconds: 5);
+
+  static const Duration responseTimeout =
+      Duration(seconds: 15);
+
+  static const int maxResponseSize =
+      1024 * 1024; // 1 MB
 
   Future<String> sendImage({
     required String ip,
@@ -17,15 +30,13 @@ class SocketService {
     Socket? socket;
 
     try {
-      // 1. Abre conexão TCP com o servidor.
       socket = await Socket.connect(
         ip,
         port,
         timeout: connectionTimeout,
       );
 
-      // 2. Cria os 4 bytes que representam
-      // o tamanho da imagem em big-endian.
+      // Tamanho da imagem em 4 bytes, big-endian.
       final ByteData imageSizeData = ByteData(4)
         ..setUint32(
           0,
@@ -33,23 +44,16 @@ class SocketService {
           Endian.big,
         );
 
-      final Uint8List imageSizeBytes =
-          imageSizeData.buffer.asUint8List();
+      socket.add(
+        imageSizeData.buffer.asUint8List(),
+      );
 
-      // 3. Envia primeiro o tamanho.
-      socket.add(imageSizeBytes);
-
-      // 4. Depois envia a imagem JPEG.
       socket.add(imageBytes);
 
-      // Garante que os dados sejam enviados.
       await socket.flush();
 
-      // 5. Aguarda a resposta do servidor.
-      //
-      // Pelo protocolo definido pela dupla,
-      // o servidor encerra a conexão após
-      // enviar a resposta completa.
+      // Recebe toda a resposta até o servidor
+      // encerrar a conexão.
       final BytesBuilder responseBuilder =
           BytesBuilder(copy: false);
 
@@ -61,15 +65,13 @@ class SocketService {
       final Uint8List responseData =
           responseBuilder.takeBytes();
 
-      // Precisamos receber pelo menos os
-      // 4 bytes que representam o tamanho.
       if (responseData.length < 4) {
-        throw Exception(
-          'Resposta inválida: tamanho da resposta não recebido.',
+        throw const SocketServiceException(
+          'O servidor enviou uma resposta incompleta.',
         );
       }
 
-      // 6. Lê os primeiros 4 bytes em big-endian.
+      // Primeiros 4 bytes = tamanho do JSON.
       final ByteData responseSizeData =
           ByteData.sublistView(
         responseData,
@@ -84,44 +86,51 @@ class SocketService {
       );
 
       if (responseSize <= 0) {
-        throw Exception(
-          'Resposta inválida: tamanho do JSON é zero.',
+        throw const SocketServiceException(
+          'O servidor informou um tamanho de resposta inválido.',
         );
       }
 
       if (responseSize > maxResponseSize) {
-        throw Exception(
-          'Resposta inválida: tamanho do JSON excede o limite permitido.',
+        throw const SocketServiceException(
+          'A resposta do servidor excede o tamanho permitido.',
         );
       }
 
-      // 7. Separa os bytes pertencentes ao JSON.
       final Uint8List jsonBytes =
           responseData.sublist(4);
 
       if (jsonBytes.length != responseSize) {
-        throw Exception(
-          'Resposta incompleta. '
+        throw SocketServiceException(
+          'Resposta incompleta do servidor. '
           'Esperado: $responseSize bytes. '
           'Recebido: ${jsonBytes.length} bytes.',
         );
       }
 
-      // 8. Converte os bytes UTF-8 em String.
-      final String jsonResponse =
-          utf8.decode(jsonBytes);
-
-      return jsonResponse;
-    } on SocketException catch (error) {
-      throw Exception(
-        'Não foi possível conectar ao servidor: ${error.message}',
+      try {
+        return utf8.decode(jsonBytes);
+      } on FormatException {
+        throw const SocketServiceException(
+          'O servidor retornou dados inválidos.',
+        );
+      }
+    } on SocketServiceException {
+      rethrow;
+    } on SocketException {
+      throw const SocketServiceException(
+        'Não foi possível conectar ao servidor. '
+        'Verifique o IP, a porta e se o servidor está ligado.',
       );
     } on TimeoutException {
-      throw Exception(
-        'Tempo limite excedido na comunicação com o servidor.',
+      throw const SocketServiceException(
+        'O servidor demorou muito para responder.',
+      );
+    } catch (error) {
+      throw SocketServiceException(
+        'Erro inesperado na comunicação: $error',
       );
     } finally {
-      // A análise acabou ou ocorreu algum erro.
       socket?.destroy();
     }
   }
