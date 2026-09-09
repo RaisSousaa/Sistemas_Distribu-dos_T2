@@ -1,112 +1,244 @@
-# Atividade 2 — Foto via Botão (Android → Servidor Python por Sockets)
+# Atividade 2 — Foto via Botão
 
-Sistema distribuído composto por um aplicativo móvel em **Flutter (Android)** e um servidor em **Python (OpenCV + YOLO)** comunicando-se diretamente via **Sockets TCP**. O aplicativo realiza a captura de fotos através da câmera do dispositivo, redimensiona e comprime a imagem em JPEG e a transmite para o servidor, que executa inferência de detecção de objetos e responde com os itens identificados em formato JSON estruturado.
+## Android → Servidor Python por Socket TCP
+
+Projeto desenvolvido para a Atividade 2 da disciplina de Sistemas Distribuídos.
+
+O sistema é composto por:
+
+- um aplicativo Android desenvolvido em **Flutter/Dart**;
+- um servidor desenvolvido em **Python**;
+- comunicação entre cliente e servidor utilizando **Socket TCP**;
+- processamento das imagens utilizando **OpenCV** e **YOLOv8n**.
+
+O aplicativo captura uma fotografia utilizando a câmera do celular, redimensiona e comprime a imagem em JPEG, envia a fotografia ao servidor e exibe os objetos identificados pelo modelo de detecção.
 
 ---
 
-## 👥 Divisão da Dupla
+## Funcionamento
 
-| Pessoa | Frente Principal | Responsabilidades |
-| :--- | :--- | :--- |
-| **Pessoa 1** | Flutter (Cliente TCP & Mobile) | Câmera, captura e compressão de imagem (JPEG ~80%, max 1280px), cliente socket TCP, exibição dos resultados na interface. |
-| **Pessoa 2** | Python (Servidor TCP & IA) | Servidor socket TCP multiconexão sequencial, decodificação OpenCV, modelo YOLOv8n, persistência das fotos com timestamp. |
-| **Ambos** | Integração & Qualidade | Protocolo de rede, testes automatizados de integração, documentação, capturas de tela e roteiro de demonstração. |
+O fluxo da aplicação é:
 
----
-
-## 🏛️ Arquitetura do Projeto
-
+```text
+Celular Android
+      │
+      │ Captura da foto
+      ▼
+Aplicativo Flutter
+      │
+      │ JPEG (~80%, largura máxima de 1280 px)
+      │ Socket TCP
+      ▼
+Servidor Python
+      │
+      │ OpenCV + YOLOv8n
+      ▼
+Detecção de objetos
+      │
+      │ JSON
+      ▼
+Aplicativo Flutter
+      │
+      ▼
+Resultado da análise
 ```
-atividade-foto-socket/
-├── app/                         # Pessoa 1 — Flutter
-│   ├── android/                 # Configurações nativas Android
+
+Exemplos de resultados apresentados no aplicativo:
+
+```text
+Pessoa detectada
+Confiança: 87%
+
+Cadeira detectada
+Confiança: 72%
+```
+
+Caso nenhum objeto seja identificado:
+
+```text
+Nada Detectado
+```
+
+---
+
+# Tecnologias utilizadas
+
+## Aplicativo Android
+
+- **Flutter**
+- **Dart**
+- pacote `camera`
+- pacote `image`
+- biblioteca nativa `dart:io`
+
+### Responsabilidades do aplicativo
+
+- acesso à câmera do celular;
+- captura da fotografia;
+- redimensionamento da imagem;
+- compressão JPEG com qualidade aproximada de 80%;
+- largura máxima de 1280 px;
+- comunicação TCP com o servidor;
+- envio da fotografia;
+- recebimento da resposta;
+- exibição dos objetos detectados;
+- tratamento de erros de conexão.
+
+---
+
+## Servidor
+
+- **Python 3.11**
+- **Socket TCP**
+- **OpenCV**
+- **NumPy**
+- **Ultralytics**
+- **YOLOv8n**
+- **PyTorch**
+
+### Responsabilidades do servidor
+
+- aguardar conexões TCP;
+- receber a fotografia;
+- reconstruir a imagem recebida;
+- salvar a imagem com timestamp;
+- executar a detecção utilizando YOLOv8n;
+- obter nome e confiança das detecções;
+- retornar o resultado para o aplicativo.
+
+---
+
+# Modelo de detecção
+
+O modelo utilizado é:
+
+```text
+YOLOv8n
+```
+
+O YOLOv8n é a versão Nano da família YOLOv8 e foi escolhido por possuir baixo custo computacional e permitir a execução da detecção em CPU.
+
+O modelo utilizado é pré-treinado e consegue identificar diversas classes de objetos, como:
+
+- pessoa;
+- cadeira;
+- mochila;
+- carro;
+- bicicleta;
+- cachorro;
+- gato;
+- garrafa;
+- celular;
+- entre outros.
+
+O arquivo `yolov8n.pt` não precisa ser armazenado no repositório. Na primeira execução, a biblioteca Ultralytics pode realizar o download do modelo automaticamente.
+
+---
+
+# Estrutura do projeto
+
+```text
+Sistemas_Distribu-dos_T2/
+│
+├── app/
+│   ├── android/
+│   │
 │   ├── lib/
-│   │   ├── main.dart            # Ponto de entrada do app
-│   │   ├── models/              # Modelos de dados (Detection, DetectionResponse)
+│   │   ├── main.dart
+│   │   │
+│   │   ├── models/
+│   │   │   ├── detection.dart
+│   │   │   └── detection_response.dart
+│   │   │
 │   │   ├── screens/
-│   │   │   └── home_screen.dart # Interface: IP, Porta, Câmera, Botão e Resultados
+│   │   │   └── home_screen.dart
+│   │   │
 │   │   └── services/
-│   │       ├── camera_service.dart # Gerenciamento da câmera do aparelho
-│   │       ├── image_service.dart  # Redimensionamento e compressão JPEG
-│   │       └── socket_service.dart # Conexão TCP e envio/recebimento de bytes
-│   ├── test/                    # Testes de unidade do aplicativo
-│   └── pubspec.yaml             # Dependências Flutter
+│   │       ├── camera_service.dart
+│   │       ├── image_service.dart
+│   │       └── socket_service.dart
+│   │
+│   └── pubspec.yaml
 │
-├── server/                      # Pessoa 2 — Python
-│   ├── server.py                # Servidor socket TCP (porta 5000)
-│   ├── detector.py              # Processamento de imagem e inferência YOLOv8n
-│   ├── requirements.txt         # Dependências Python (ultralytics, opencv, numpy)
-│   ├── yolov8n.pt               # Pesos do modelo YOLOv8 Nano
-│   ├── test_client.py           # Cliente de teste em Python
-│   ├── test_integration.py      # Bateria de testes de integração ponta a ponta
-│   ├── test_images/             # Imagens de teste
-│   └── received_images/         # Imagens recebidas salvas com timestamp
+├── server/
+│   ├── server.py
+│   ├── detector.py
+│   ├── requirements.txt
+│   └── received_images/
 │
-├── screenshots/                 # Ambos — Capturas de tela e evidências
-│   ├── app.png                  # Tela do aplicativo Flutter
-│   ├── captured_image.jpg       # Fotografia capturada
-│   └── detection_result.png     # Detecção visual dos objetos pelo modelo
+├── screenshots/
+│   ├── app.png
+│   ├── captured_image.jpg
+│   └── detection_result.png
 │
-├── received_images/             # Imagens recebidas na raiz do projeto
-└── README.md                    # Documentação completa da atividade
+└── README.md
 ```
 
 ---
 
-## 📡 Protocolo de Comunicação TCP
+# Protocolo de comunicação
 
-A comunicação ocorre sobre o protocolo TCP na porta padrão **5000**, seguindo uma política de **uma conexão TCP por fotografia analisada**.
+A comunicação entre Flutter e Python utiliza **Socket TCP**.
 
-### 1. Flutter → Servidor Python
-O aplicativo envia um cabeçalho fixo de 4 bytes contendo o tamanho exato da imagem em ordem **big-endian** (inteiro de 32 bits sem sinal), seguido imediatamente pelos bytes da imagem JPEG:
+A porta padrão utilizada pelo projeto é:
 
-```
-┌───────────────────────────┬──────────────────────────────────────────┐
-│          4 bytes          │                 N bytes                  │
-│ Tamanho da imagem (uint32)│          Bytes da imagem JPEG            │
-└───────────────────────────┴──────────────────────────────────────────┘
+```text
+5000
 ```
 
-* **Formato da imagem:** JPEG
-* **Qualidade:** ~80%
-* **Largura máxima:** 1280 px
+Cada fotografia é processada utilizando uma nova conexão TCP.
 
-### 2. Servidor Python → Flutter
-Após processar a imagem, o servidor envia primeiro 4 bytes em **big-endian** com o tamanho do JSON e, logo em seguida, o conteúdo do JSON codificado em **UTF-8**:
+## Flutter → Python
 
+O envio da fotografia possui o seguinte formato:
+
+```text
+┌─────────────────────────┬──────────────────────────┐
+│ 4 bytes                 │ N bytes                  │
+│ tamanho da imagem       │ imagem JPEG              │
+│ uint32 / big-endian     │                          │
+└─────────────────────────┴──────────────────────────┘
 ```
-┌───────────────────────────┬──────────────────────────────────────────┐
-│          4 bytes          │                 N bytes                  │
-│ Tamanho do JSON (uint32)  │             JSON codificado UTF-8        │
-└───────────────────────────┴──────────────────────────────────────────┘
-```
 
-Ao concluir o envio da resposta completa, o servidor encerra a conexão (`socket.close()`). O Flutter lê os dados recebidos, decodifica a resposta e fecha o socket localmente.
+Primeiro são enviados **4 bytes contendo o tamanho da imagem**.
+
+Em seguida são enviados todos os bytes da fotografia JPEG.
 
 ---
 
-## 📋 Estrutura da Resposta JSON
+## Python → Flutter
 
-### Sucesso com objetos detectados
+A resposta utiliza:
+
+```text
+┌─────────────────────────┬──────────────────────────┐
+│ 4 bytes                 │ N bytes                  │
+│ tamanho da resposta     │ JSON UTF-8               │
+│ uint32 / big-endian     │                          │
+└─────────────────────────┴──────────────────────────┘
+```
+
+Exemplo de resposta:
+
 ```json
 {
   "success": true,
   "objects": [
     {
-      "name": "chair",
-      "confidence": 0.89
+      "name": "person",
+      "confidence": 0.87
     },
     {
       "name": "chair",
-      "confidence": 0.71
+      "confidence": 0.72
     }
   ],
   "error": null
 }
 ```
-*O aplicativo exibe os itens em português com concordância (ex.: "Cadeira detectada", "Confiança: 89%").*
 
-### Nenhum objeto detectado
+Caso nenhum objeto seja encontrado:
+
 ```json
 {
   "success": true,
@@ -114,136 +246,349 @@ Ao concluir o envio da resposta completa, o servidor encerra a conexão (`socket
   "error": null
 }
 ```
-*O aplicativo exibe a mensagem:* **`Nada Detectado`**.
 
-### Erro no processamento ou dados corrompidos
+Caso ocorra erro:
+
 ```json
 {
   "success": false,
   "objects": [],
-  "error": "Falha ao decodificar a imagem: formato inválido ou corrompido."
+  "error": "mensagem do erro"
 }
 ```
 
----
+Após enviar a resposta, a conexão é encerrada.
 
-## 🧠 Modelo e Bibliotecas Utilizadas
-
-### Servidor Python
-- **YOLOv8n (`ultralytics`)**: Modelo neural YOLOv8 Nano pré-treinado na base COCO (80 classes), oferecendo inferência rápida em CPU para detecção de objetos (pessoas, carros, cadeiras, mochilas, celulares, garrafas, etc.).
-- **OpenCV (`opencv-python`)**: Decodificação dos bytes em memória (`imdecode`), manipulação de matrizes e gravação no disco (`imwrite`).
-- **NumPy (`numpy`)**: Manipulação eficiente do buffer de bytes da imagem.
-- **Sockets (`socket`, `struct`)**: Comunicação de rede em baixo nível e empacotamento binário em big-endian.
-
-### Aplicativo Flutter
-- **`camera`**: Acesso à câmera nativa do dispositivo Android e captura fotográfica em alta resolução.
-- **`image`**: Redimensionamento proporcional (largura máxima de 1280 px) e compressão em JPEG com qualidade 80%.
-- **`dart:io`**: Sockets TCP assíncronos (`Socket.connect`), timeouts e manipulação de buffers binários com `ByteData`.
+Para uma nova fotografia, o aplicativo cria uma nova conexão TCP.
 
 ---
 
-## ⚙️ Como Configurar o IP e a Porta
+# Pré-requisitos
 
-1. No computador onde o servidor Python será executado, verifique o IP local na rede Wi-Fi:
-   - **Linux / macOS:**
-     ```bash
-     ip a
-     # ou
-     ifconfig
-     ```
-     Localize a interface Wi-Fi (ex.: `wlan0` ou `wlp2s0`) e anote o IP (ex.: `192.168.1.105`).
-   - **Windows:**
-     ```bash
-     ipconfig
-     ```
-     Localize o `Adaptador de Rede Sem Fio Wi-Fi` e anote o `Endereço IPv4`.
+## Servidor
 
-2. Certifique-se de que o smartphone e o computador estão conectados na **mesma rede Wi-Fi** e que a porta **5000** não está bloqueada pelo firewall.
+É recomendado utilizar:
 
-3. No aplicativo Android, insira o IP anotado no campo **"IP do servidor"** e confirme a porta **"5000"**.
-
----
-
-## 🚀 Como Executar o Projeto
-
-### 1. Executando o Servidor Python
-
-No terminal, a partir da raiz do repositório:
-
-```bash
-# Ative o ambiente virtual (se necessário)
-source server/venv/bin/activate
-
-# Instale as dependências (se ainda não instaladas)
-pip install -r server/requirements.txt
-
-# Inicie o servidor
-python server/server.py
-```
-
-O terminal exibirá:
 ```text
-2026-09-09 14:18:29 [INFO] Servidor TCP iniciado e escutando em 0.0.0.0:5000
-2026-09-09 14:18:29 [INFO] Aguardando imagem...
+Python 3.11
 ```
 
-### 2. Executando o Aplicativo Flutter
+No Windows também pode ser necessário instalar o **Microsoft Visual C++ Redistributable x64**, utilizado por dependências como o PyTorch.
 
-Conecte um celular Android via USB com depuração ativada (ou inicie um emulador):
+## Aplicativo
+
+É necessário possuir:
+
+- Flutter instalado;
+- Android SDK;
+- celular Android ou emulador;
+- depuração USB habilitada caso seja utilizado um celular físico.
+
+Para verificar o ambiente Flutter:
 
 ```bash
+flutter doctor
+```
+
+---
+
+# Como executar o servidor
+
+## 1. Acessar a pasta
+
+No Windows PowerShell:
+
+```powershell
+cd server
+```
+
+## 2. Criar o ambiente virtual
+
+```powershell
+py -3.11 -m venv .venv
+```
+
+## 3. Instalar as dependências
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Para a versão utilizada durante o desenvolvimento, o PyTorch pode ser instalado com:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install `
+  torch==2.5.1 `
+  torchvision==0.20.1 `
+  torchaudio==2.5.1 `
+  --index-url https://download.pytorch.org/whl/cpu
+```
+
+## 4. Iniciar o servidor
+
+```powershell
+.\.venv\Scripts\python.exe server.py
+```
+
+Quando estiver funcionando, o terminal exibirá:
+
+```text
+Servidor TCP iniciado e escutando em 0.0.0.0:5000
+Aguardando imagem...
+```
+
+O terminal deve permanecer aberto enquanto o aplicativo estiver sendo utilizado.
+
+---
+
+# Como configurar IP e porta
+
+O celular precisa conseguir acessar o computador onde o servidor Python está sendo executado.
+
+Durante os testes, o celular e o computador devem estar conectados à **mesma rede Wi-Fi**.
+
+## Descobrir o IP no Windows
+
+Execute:
+
+```powershell
+ipconfig
+```
+
+Procure:
+
+```text
+Adaptador de Rede sem Fio Wi-Fi
+```
+
+e localize:
+
+```text
+Endereço IPv4
+```
+
+Exemplo:
+
+```text
+192.168.1.35
+```
+
+No aplicativo configure:
+
+```text
+IP do servidor: 192.168.1.35
+Porta: 5000
+```
+
+> O endereço IP pode mudar ao trocar de rede ou reconectar o computador ao roteador.
+
+Não utilize no aplicativo:
+
+```text
+127.0.0.1
+localhost
+0.0.0.0
+```
+
+Também devem ser evitados endereços pertencentes a redes virtuais, como interfaces Docker.
+
+O servidor utiliza:
+
+```text
+0.0.0.0:5000
+```
+
+para aceitar conexões pelas interfaces de rede disponíveis, enquanto o aplicativo deve utilizar o **IPv4 real do computador**.
+
+---
+
+# Como executar o aplicativo Flutter
+
+## 1. Acessar a pasta do aplicativo
+
+Na raiz do projeto:
+
+```powershell
 cd app
-flutter pub get
+```
+
+### Instalar as dependências
+
+O servidor foi desenvolvido e testado com **Python 3.11**.
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+## 3. Verificar o celular conectado
+
+Com a depuração USB habilitada:
+
+```powershell
+flutter devices
+```
+
+Exemplo:
+
+```text
+SM G780G (mobile) • RX8R40APLAR • android-arm64 • Android 13
+```
+
+## 4. Executar
+
+```powershell
 flutter run
 ```
 
-Para gerar o arquivo APK de instalação:
-```bash
-flutter build apk --release
-```
-O arquivo gerado estará em `app/build/app/outputs/flutter-apk/app-release.apk`.
+Também é possível informar diretamente o ID do aparelho:
 
----
-
-## 🧪 Testes Automatizados
-
-O repositório inclui suítes de testes automatizados para validação integral da comunicação e dos dados.
-
-### Testes de Integração Fim a Fim (Python)
-Para testar todos os fluxos da especificação de forma automatizada (detecção múltipla, reconexão sucessiva, cenário "Nada Detectado", dados corrompidos, servidor offline e salvamento com timestamp):
-
-```bash
-./server/venv/bin/python server/test_integration.py
-```
-
-### Teste de Envio com Imagens de Teste
-```bash
-./server/venv/bin/python server/test_client.py
-```
-
-### Testes Unitários do Flutter
-```bash
-cd app
-flutter test
+```powershell
+flutter run -d ID_DO_DISPOSITIVO
 ```
 
 ---
 
-## 📸 Capturas de Tela
+# Como utilizar
 
-| Interface do Aplicativo (`app.png`) | Imagem Capturada (`captured_image.jpg`) | Resultado da Detecção (`detection_result.png`) |
-| :---: | :---: | :---: |
-| ![Interface do App](screenshots/app.png) | ![Foto Capturada](screenshots/captured_image.jpg) | ![Detecção YOLO](screenshots/detection_result.png) |
+Com o servidor Python em execução:
+
+1. Abra o aplicativo no celular.
+2. Informe o **IP do computador**.
+3. Mantenha a porta `5000`.
+4. Posicione a câmera em direção aos objetos.
+5. Toque em **Tirar e Analisar**.
+6. A fotografia capturada será exibida na tela.
+7. Aguarde o processamento pelo servidor.
+8. Confira os objetos identificados e suas respectivas confianças.
+9. Toque em **Nova análise** para tirar outra fotografia.
 
 ---
 
-## 📝 Roteiro de Demonstração
+# Salvamento das imagens
 
-1. **Iniciar o Servidor:** Inicie o servidor Python no computador (`python server/server.py`). O console exibirá `"Aguardando imagem..."`.
-2. **Configuração no App:** Abra o aplicativo Android, digite o IP do servidor e a porta `5000`.
-3. **Primeira Análise:** Aponte a câmera para um ou mais objetos (ex.: pessoa, cadeira, celular) e toque em **"Tirar e Analisar"**.
-4. **Processamento:** O app exibe o loading enquanto a foto é comprimida e transmitida. O servidor loga a recepção, processa a imagem com YOLO e salva o arquivo em `received_images/` com timestamp (`YYYY-MM-DD_HH-MM-SS.jpg`).
-5. **Exibição do Resultado:** O app recebe a resposta e exibe os objetos identificados com suas respectivas taxas de confiança (ex.: *"Cadeira detectada - Confiança: 89%"*).
-6. **Teste de "Nada Detectado":** Aponte para uma superfície lisa (como uma parede branca ou folha) e toque em **"Tirar e Analisar"**. O app exibirá **"Nada Detectado"**.
-7. **Nova Análise:** Toque novamente para analisar outra cena, confirmando que o servidor reinicia o ciclo e aceita a nova conexão sem necessidade de reinicialização.
-8. **Tratamento de Erros:** Desligue o servidor no computador e tente realizar uma análise no celular; confirme que o app exibe uma mensagem amigável informando a impossibilidade de conexão.
+Cada fotografia recebida é salva pelo servidor com um timestamp.
+
+Exemplo:
+
+```text
+server/received_images/
+├── 2026-09-09_15-30-12.jpg
+├── 2026-09-09_15-31-45.jpg
+└── 2026-09-09_15-33-07.jpg
+```
+
+Isso permite armazenar diferentes análises sem sobrescrever fotografias anteriores.
+
+---
+
+# Capturas de tela
+
+## Aplicativo Android
+
+![Interface do aplicativo](screenshots/app.png)
+
+## Imagem capturada
+
+![Imagem capturada](screenshots/captured_image.jpg)
+
+## Resultado da detecção
+
+![Resultado da detecção](screenshots/detection_result.png)
+
+---
+
+# Roteiro de demonstração
+
+1. Iniciar o servidor Python.
+
+```powershell
+.\server\.venv\Scripts\python.exe .\server\server.py
+```
+
+2. Confirmar no terminal:
+
+```text
+Aguardando imagem...
+```
+
+3. Abrir o aplicativo Android.
+
+4. Informar o IP do computador e a porta `5000`.
+
+5. Apontar a câmera para uma cena contendo objetos.
+
+6. Tocar em:
+
+```text
+Tirar e Analisar
+```
+
+7. O aplicativo captura e envia a fotografia.
+
+8. O servidor recebe a imagem, salva com timestamp e executa a detecção com YOLOv8n.
+
+9. O aplicativo exibe os objetos encontrados.
+
+Exemplo:
+
+```text
+Pessoa detectada
+Confiança: 87%
+```
+
+10. Realizar uma nova análise utilizando o botão:
+
+```text
+Nova análise
+```
+
+11. Demonstrar também o caso em que nenhum objeto é encontrado:
+
+```text
+Nada Detectado
+```
+
+---
+
+# Tratamento de erros
+
+O aplicativo possui tratamento para situações como:
+
+- IP inválido;
+- porta inválida;
+- servidor desligado;
+- falha de conexão;
+- timeout;
+- resposta incompleta;
+- JSON inválido;
+- erro retornado pelo servidor.
+
+Exemplo:
+
+```text
+Não foi possível conectar ao servidor.
+Verifique o IP, a porta e se o servidor está ligado.
+```
+
+---
+
+# Divisão da dupla
+
+| Pessoa | Responsabilidade |
+|---|---|
+| **Pessoa 1** | Aplicativo Flutter, câmera, processamento da imagem, cliente TCP e interface |
+| **Pessoa 2** | Servidor Python, Socket TCP, OpenCV, YOLO e detecção |
+| **Ambos** | Integração, testes, documentação e demonstração |
+
+---
+
+# Resultado
+
+O projeto implementa a comunicação distribuída entre um aplicativo Android e um servidor Python utilizando **Sockets TCP**.
+
+O aplicativo é responsável pela captura e envio da fotografia, enquanto o servidor realiza o processamento utilizando **YOLOv8n + OpenCV** e devolve ao aplicativo os objetos identificados.
