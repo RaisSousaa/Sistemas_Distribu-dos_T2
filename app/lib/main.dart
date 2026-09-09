@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'screens/home_screen.dart';
 
 void main() {
@@ -13,9 +14,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Detector de Objetos',
-      theme: ThemeData(
-        useMaterial3: true,
-      ),
+      theme: ThemeData(useMaterial3: true),
       home: const HomeScreen(),
     );
   }

@@ -37,10 +37,7 @@ class ImageService {
     img.Image processedImage = decodedImage;
 
     if (decodedImage.width > maxWidth) {
-      processedImage = img.copyResize(
-        decodedImage,
-        width: maxWidth,
-      );
+      processedImage = img.copyResize(decodedImage, width: maxWidth);
     }
 
     final Uint8List jpegBytes = img.encodeJpg(
