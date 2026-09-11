@@ -592,3 +592,83 @@ Verifique o IP, a porta e se o servidor está ligado.
 O projeto implementa a comunicação distribuída entre um aplicativo Android e um servidor Python utilizando **Sockets TCP**.
 
 O aplicativo é responsável pela captura e envio da fotografia, enquanto o servidor realiza o processamento utilizando **YOLOv8n + OpenCV** e devolve ao aplicativo os objetos identificados.
+
+---
+
+## Demonstração da Aplicação
+
+### 1. Interface inicial
+
+A aplicação apresenta uma interface para captura da imagem, configuração do servidor e visualização dos resultados.
+
+O usuário informa:
+- Endereço IP do servidor;
+- Porta de comunicação TCP;
+- Captura da imagem através da câmera.
+
+![Interface inicial](screenshots/interface-inicial.jpg)
+
+---
+
+### 2. Captura e envio da imagem
+
+Após pressionar o botão **"Tirar e Analisar"**, a imagem é capturada, convertida para JPEG e enviada ao servidor através de uma conexão TCP.
+
+Durante o processamento, a aplicação informa o envio da imagem.
+
+![Envio da imagem](screenshots/envio-processamento.jpg)
+
+---
+
+### 3. Detecção dos objetos
+
+Após o processamento no servidor utilizando YOLO, o resultado retorna para o aplicativo contendo:
+
+- Nome do objeto detectado;
+- Percentual de confiança da detecção.
+
+Exemplo:
+
+![Objeto detectado](screenshots/gato-detectado.jpg)
+
+![Objetos detectados](screenshots/celular-notebook.jpg)
+
+![Cadeira detectada](screenshots/cadeira-detectada.jpg)
+
+---
+
+### 4. Exemplos de detecção
+
+Alguns testes realizados:
+
+| Objeto | Confiança |
+|---|---|
+| Gato | 89% |
+| Celular | 87% |
+| Notebook | 61% |
+| Cadeira | 91% |
+
+---
+
+## Fluxo da aplicação
+
+```text
+Câmera Flutter
+      |
+      v
+Captura da imagem
+      |
+      v
+Conversão JPEG
+      |
+      v
+Envio TCP para servidor
+      |
+      v
+Servidor Python + YOLO
+      |
+      v
+Resposta JSON
+      |
+      v
+Atualização da interface Flutter
